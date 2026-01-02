@@ -234,12 +234,15 @@ const SuperAdminView = () => {
                 return (
                     <Space size="small">
                         {isNormal && record.role === 'USER' && !hasAdmin && (
-                            <Popconfirm title="设为组长?" onConfirm={() => handleChangeGroupRole(record, 'ADMIN')}><Button type="link" size="small" icon={<CrownOutlined />}>升职</Button></Popconfirm>
+                            <Popconfirm title="设为组长?" onConfirm={() => handleChangeGroupRole(record, 'ADMIN')}><Button type="link" size="small" icon={<CrownOutlined />}>设为组长</Button></Popconfirm>
                         )}
                         {isNormal && record.role === 'ADMIN' && (
-                            <Popconfirm title="降为成员?" onConfirm={() => handleChangeGroupRole(record, 'USER')}><Button type="link" size="small">降职</Button></Popconfirm>
+                            <Popconfirm title="降为成员?" onConfirm={() => handleChangeGroupRole(record, 'USER')}><Button type="link" size="small">设为成员</Button></Popconfirm>
                         )}
-                        <Popconfirm title="移出小组?" onConfirm={() => handleRemoveFromGroup(record)}><Button type="link" size="small" danger icon={<LogoutOutlined />}>移出</Button></Popconfirm>
+                        {/* 逻辑：所有用户都可以移出 */}
+                        <Popconfirm title="确定移出该小组?" description="组长移出后角色将重置为普通用户" onConfirm={() => handleRemoveFromGroup(record)}>
+                            <Button type="link" size="small" danger icon={<LogoutOutlined />}>移出</Button>
+                        </Popconfirm>
                     </Space>
                 );
             }}
@@ -281,7 +284,7 @@ const SuperAdminView = () => {
 
     return (
         <div>
-            <h2 style={{ marginBottom: 20 }}>用户与组织管理 (全功能)</h2>
+            <h2 style={{ marginBottom: 20 }}>用户与小组管理</h2>
             <Card>
                 <Tabs activeKey={activeTab} onChange={setActiveTab} items={[{ key: '1', label: '全员列表', children: <AllUsersView /> }, { key: '2', label: '小组视图', children: <GroupView /> }]} />
             </Card>

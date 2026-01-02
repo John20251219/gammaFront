@@ -4,7 +4,7 @@ import { message } from 'antd';
 
 // 创建 axios 实例
 const service = axios.create({
-    baseURL: 'http://localhost:8080', // 你的真实后端地址
+    baseURL: '', // 你的真实后端地址
     timeout: 5000 // 请求超时时间
 });
 
