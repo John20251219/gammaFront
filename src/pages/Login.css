@@ -1,0 +1,135 @@
+/* src/pages/Login.css */
+
+/* 容器：左右布局 */
+.login-container {
+    display: flex;
+    height: 100vh;
+    width: 100%;
+    overflow: hidden;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* 左侧：品牌展示区 */
+.login-left {
+    flex: 1.2;
+    position: relative;
+
+    /* --- 选项 1：消防员背影（推荐，很有使命感）
+    background-image: url('https://images.unsplash.com/photo-1606836154564-88481d654228?q=80&w=2070&auto=format&fit=crop');--- */
+
+    /* --- 选项 2：红色消防车特写（工业风，很酷） --- */
+     background-image: url('https://images.unsplash.com/photo-1556108139-3889025c84d6?q=80&w=2070&auto=format&fit=crop');
+
+    /* --- 选项 3：灭火救援现场（更有张力） --- */
+    /* background-image: url('https://images.unsplash.com/photo-1527011046414-4781f1f94f8c?q=80&w=1888&auto=format&fit=crop'); */
+
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 60px;
+    color: white;
+}
+
+/* 调整遮罩层：消防主题适合深色偏红或纯黑的遮罩，以凸显严肃感 */
+.login-left::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    /* 从左上角的深黑 到 右下角的微红透明，既保证文字清晰，又透出背景的火光感 */
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.9) 0%, rgba(60, 20, 20, 0.7) 100%);
+    z-index: 1;
+}
+
+/* 左侧的内容需要置于蒙版之上 */
+.login-left-content {
+    position: relative;
+    z-index: 2;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.brand-logo {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.brand-slogan h1 {
+    font-size: 48px;
+    margin-bottom: 20px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.brand-slogan p {
+    font-size: 18px;
+    opacity: 0.8;
+    max-width: 80%;
+}
+
+/* 右侧：表单区域 */
+.login-right {
+    flex: 1;
+    display: flex;
+    flex-direction: column; /* 改为纵向排列 */
+    align-items: center;
+    justify-content: space-between; /* 上中下分布 */
+    background-color: #ffffff;
+    padding: 40px;
+}
+.login-form-wrapper {
+    width: 100%;
+    max-width: 420px;
+    /* 如果觉得表单太靠上，可以加一点 margin-top */
+    margin-top: auto;
+    margin-bottom: auto;
+}
+
+.form-header {
+    margin-bottom: 40px;
+}
+
+.form-header h2 {
+    font-size: 32px;
+    font-weight: 700;
+    color: #1f1f1f;
+    margin-bottom: 10px;
+}
+
+.form-header p {
+    color: #8c8c8c;
+    font-size: 16px;
+}
+
+/* 覆盖 Antd 的默认样式，使其更大气 */
+.login-form .ant-input-affix-wrapper {
+    padding: 12px 11px;
+}
+
+.login-form .ant-btn-primary {
+    height: 48px;
+    font-size: 16px;
+    font-weight: 500;
+    background-color: #0052cc; /* 国际化的深蓝色 */
+}
+
+.login-form .ant-btn-primary:hover {
+    background-color: #003eb3;
+}
+
+/* 响应式：手机端隐藏左侧 */
+@media (max-width: 768px) {
+    .login-left {
+        display: none;
+    }
+}
