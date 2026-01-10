@@ -173,9 +173,11 @@ const Dashboard = () => {
                     collapsed={collapsed}
                     onCollapse={(value) => setCollapsed(value)}
                     width={220}
-                    style={{ background: colorBgContainer }}
+                    theme="dark"
+                    style={{ background: '#001529' }}
                 >
                     <Menu
+                        theme="dark"
                         mode="inline"
                         selectedKeys={[selectedKey]}
                         defaultOpenKeys={openKeys}
@@ -186,7 +188,7 @@ const Dashboard = () => {
                 </Sider>
 
                 {/* 右侧内容滚动区 */}
-                <Layout style={{ padding: '0 24px 24px' }}>
+                <Layout style={{ padding: '0 24px 24px' ,marginLeft: 0 }}>
 
                     {/* 面包屑或顶部间距 */}
                     <div style={{ margin: '16px 0' }}></div>

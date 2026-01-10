@@ -22,6 +22,46 @@ const SuperAdminView = () => {
     const [groups, setGroups] = useState([]);
     const [occupiedGroupIds, setOccupiedGroupIds] = useState([]);
 
+    const [isEditGroupModalOpen, setIsEditGroupModalOpen] = useState(false);
+    const [editingGroup, setEditingGroup] = useState(null);
+    const [editGroupForm] = Form.useForm();
+
+    // === 新增：点击编辑小组按钮 ===
+    const handleEditGroupClick = (e, group) => {
+        e.stopPropagation(); // 阻止冒泡，防止触发“选中小组”
+        setEditingGroup(group);
+        // 回填表单
+        editGroupForm.setFieldsValue({
+            id: group.id,
+            name: group.name,
+            description: group.description
+        });
+        setIsEditGroupModalOpen(true);
+    };
+
+    // === 新增：提交编辑小组 ===
+    const handleUpdateGroup = async () => {
+        try {
+            const values = await editGroupForm.validateFields();
+            const res = await request.put('/api/users/groups/edit', {
+                id: editingGroup.id, // 必传 ID
+                name: values.name,
+                description: values.description
+            });
+
+            if (res.code === 200) {
+                message.success('小组更新成功');
+                setIsEditGroupModalOpen(false);
+                fetchGroups(); // 刷新左侧列表
+
+                // 如果当前正好选中了这个组，为了让右侧标题也能刷新，可以重新触发一下选中逻辑
+                // 或者直接让 fetchGroups 触发重绘
+            }
+        } catch (error) {
+            // 校验失败
+        }
+    };
+
     // === Tab 1: 全员列表 ===
     const [allUsers, setAllUsers] = useState([]);
     const [allTotal, setAllTotal] = useState(0);
@@ -270,7 +310,16 @@ const SuperAdminView = () => {
             <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', minHeight: 400 }}>
                 <Card title="小组列表" style={{ width: 300, flexShrink: 0 }} extra={<Button type="text" icon={<PlusOutlined />} onClick={() => setIsModalOpen(true)}>新建</Button>}>
                     <List dataSource={groups} renderItem={(item) => (
-                        <List.Item style={{ cursor: 'pointer', background: item.id === selectedGroupId ? '#e6f7ff' : 'transparent', padding: '10px 15px' }} onClick={() => setSelectedGroupId(item.id)} actions={[<Tooltip title="添加成员"><Button type="text" icon={<UserAddOutlined />} size="small" onClick={(e) => openAddMemberModal(e, item)} /></Tooltip>]}>
+                        <List.Item style={{ cursor: 'pointer', background: item.id === selectedGroupId ? '#e6f7ff' : 'transparent', padding: '10px 15px' }}
+                                   onClick={() => setSelectedGroupId(item.id)} actions={[<Tooltip title="编辑小组">
+                            <Button
+                                type="text"
+                                icon={<EditOutlined />} // 编辑图标
+                                size="small"
+                                onClick={(e) => handleEditGroupClick(e, item)}
+                            />
+                        </Tooltip>,
+                            <Tooltip title="添加成员"><Button type="text" icon={<UserAddOutlined />} size="small" onClick={(e) => openAddMemberModal(e, item)} /></Tooltip>]}>
                             <List.Item.Meta avatar={<TeamOutlined style={{ color: item.id === selectedGroupId ? '#1890ff' : '#999' }} />} title={<Tooltip title={item.description || "暂无描述"}>{item.name}</Tooltip>} />
                         </List.Item>
                     )} />
@@ -290,6 +339,25 @@ const SuperAdminView = () => {
             </Card>
             {/* 弹窗们放在最外层 */}
             <Modal title="新建小组" open={isModalOpen} onOk={() => modalForm.submit()} onCancel={() => setIsModalOpen(false)}><Form form={modalForm} onFinish={handleAddGroup} layout="vertical"><Form.Item name="groupName" label="名称" rules={[{ required: true }]}><Input /></Form.Item><Form.Item name="description" label="描述"><Input.TextArea /></Form.Item></Form></Modal>
+            <Modal
+                title="编辑小组信息"
+                open={isEditGroupModalOpen}
+                onOk={handleUpdateGroup}
+                onCancel={() => setIsEditGroupModalOpen(false)}
+            >
+                <Form form={editGroupForm} layout="vertical">
+                    <Form.Item
+                        name="name"
+                        label="小组名称"
+                        rules={[{ required: true, message: '请输入名称' }]}
+                    >
+                        <Input />
+                    </Form.Item>
+                    <Form.Item name="description" label="职责描述">
+                        <Input.TextArea rows={4} />
+                    </Form.Item>
+                </Form>
+            </Modal>
             <Modal title="编辑用户" open={isEditModalOpen} onOk={handleUpdateUser} onCancel={() => setIsEditModalOpen(false)}><Form form={editForm} layout="vertical"><Form.Item name="username" label="用户名"><Input /></Form.Item><Form.Item name="nickname" label="昵称"><Input disabled /></Form.Item><Form.Item name="role" label="角色"><Select><Option value="USER">普通用户</Option><Option value="ADMIN">管理员</Option></Select></Form.Item><Form.Item name="groupId" label="小组"><Select allowClear>{groups.map(g => { const disabled = (currentEditRole === 'ADMIN' || currentEditRole === 'SUPER_ADMIN') && occupiedGroupIds.includes(g.id) && g.id !== editingUser?.groupId; return <Option key={g.id} value={g.id} disabled={disabled}>{g.name}{disabled?'(已占)':''}</Option> })}</Select></Form.Item></Form></Modal>
             <Modal title="添加成员" open={isAddMemberOpen} onOk={handleAddMembers} confirmLoading={addMemberLoading} onCancel={() => setIsAddMemberOpen(false)} width={600}><Table rowKey="id" dataSource={unassignedUsers} columns={[{ title: '用户名', dataIndex: 'username' }, { title: '昵称', dataIndex: 'nickname' }]} pagination={{ pageSize: 5 }} rowSelection={{ type: 'checkbox', onChange: setSelectedUserIds, selectedRowKeys: selectedUserIds }} /></Modal>
         </div>
