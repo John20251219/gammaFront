@@ -6,7 +6,7 @@ import {
 import {
     PlusOutlined, FileTextOutlined, EnvironmentOutlined,
     RocketOutlined, SaveOutlined, EditOutlined, DeleteOutlined,
-    SearchOutlined
+    SearchOutlined, ReloadOutlined
 } from '@ant-design/icons';
 import request from '../utils/request';
 import { authService } from '../utils/auth';
@@ -31,6 +31,8 @@ const TaskList = () => {
     const [modalType, setModalType] = useState('create'); // 'create' | 'edit'
     const [editingTaskId, setEditingTaskId] = useState(null); // 当前编辑的ID
     const [form] = Form.useForm();
+
+    const [searchForm] = Form.useForm()
 
     // === 基础数据 ===
     const [groups, setGroups] = useState([]);
@@ -68,8 +70,20 @@ const TaskList = () => {
     const fetchTasks = async () => {
         setLoading(true);
         try {
+            // 1. 获取搜索栏的值
+            const searchValues = searchForm.getFieldsValue();
+
             const res = await request.get('/api/tasks/list', {
-                params: { pageNum: page, pageSize: pageSize, username: authService.getUsername() }
+                params: {
+                    pageNum: page,
+                    pageSize: pageSize,
+                    username: authService.getUsername(),
+                    // 2. 传递筛选参数
+                    title: searchValues.title,
+                    address: searchValues.address,
+                    status: searchValues.status,
+                    queryGroupId: searchValues.queryGroupId // 注意：参数名要和后端对齐
+                }
             });
             if (res.code === 200) {
                 setTasks(res.data.records);
@@ -168,6 +182,18 @@ const TaskList = () => {
         } catch (error) { console.error(error); }
     };
 
+    // === 新增：搜索和重置操作 ===
+    const handleSearch = () => {
+        setPage(1); // 搜索时重置回第一页
+        fetchTasks();
+    };
+
+    const handleReset = () => {
+        searchForm.resetFields();
+        setPage(1);
+        fetchTasks();
+    };
+
     // === 操作：删除 ===
     const handleDelete = async (id) => {
         const res = await request.delete(`/api/tasks/${id}`);
@@ -240,6 +266,51 @@ const TaskList = () => {
                     <Button type="primary" icon={<PlusOutlined />} onClick={handleOpenCreate}>新建任务</Button>
                 )}
             </div>
+
+            {/* === 新增：搜索区域 === */}
+            <Card style={{ marginBottom: 16 }} bodyStyle={{ padding: '24px 24px 0 24px' }}>
+                <Form form={searchForm} layout="inline" onFinish={handleSearch}>
+                    <Row gutter={[16, 16]} style={{ width: '100%' }}>
+                        <Col span={6}>
+                            <Form.Item name="title" label="任务标题" style={{ width: '100%' }}>
+                                <Input placeholder="支持模糊搜索" allowClear />
+                            </Form.Item>
+                        </Col>
+                        <Col span={6}>
+                            <Form.Item name="address" label="维保地址" style={{ width: '100%' }}>
+                                <Input placeholder="支持模糊搜索" allowClear />
+                            </Form.Item>
+                        </Col>
+                        <Col span={6}>
+                            <Form.Item name="status" label="任务状态" style={{ width: '100%' }}>
+                                <Select placeholder="全部" allowClear>
+                                    {/* 超管能看到草稿，普通用户只能看到待执行/已完成，这里做通用配置，后端会自动过滤 */}
+                                    {isSuperAdmin && <Option value="DRAFT">草稿</Option>}
+                                    <Option value="PENDING">待执行</Option>
+                                    <Option value="COMPLETED">已完成</Option>
+                                </Select>
+                            </Form.Item>
+                        </Col>
+                        {/* 只有超管可以筛选执行小组 */}
+                        {isSuperAdmin && (
+                            <Col span={6}>
+                                <Form.Item name="queryGroupId" label="执行小组" style={{ width: '100%' }}>
+                                    <Select placeholder="全部" allowClear>
+                                        {groups.map(g => <Option key={g.id} value={g.id}>{g.name}</Option>)}
+                                    </Select>
+                                </Form.Item>
+                            </Col>
+                        )}
+
+                        <Col span={24} style={{ textAlign: 'right' }}>
+                            <Space>
+                                <Button icon={<ReloadOutlined />} onClick={handleReset}>重置</Button>
+                                <Button type="primary" icon={<SearchOutlined />} htmlType="submit">查询</Button>
+                            </Space>
+                        </Col>
+                    </Row>
+                </Form>
+            </Card>
 
             <Card>
                 <Table
