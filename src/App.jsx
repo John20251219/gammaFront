@@ -7,6 +7,7 @@ import SuperAdminUserList from './pages/SuperAdminUserList.jsx'; // 导入用户
 import TaskList from './pages/TaskList'; // 导入任务列表
 import PrivateRoute from './components/PrivateRoute';
 import UserList from "./pages/UserList.jsx";
+import StandardLibrary from './pages/StandardLibrary';
 
 const HomeWelcome = () => (
     <div style={{ textAlign: 'center', padding: 50 }}>
@@ -32,6 +33,7 @@ function App() {
 
                     {/* 新增的两个子路由 */}
                     <Route path="users" element={<UserList />} />
+                    <Route path="standards" element={<StandardLibrary />} />
                     <Route path="tasks" element={<TaskList />} />
 
                     <Route path="change-password" element={<ChangePassword />} />

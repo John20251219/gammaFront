@@ -5,7 +5,7 @@ import {
     OrderedListOutlined,
     HomeOutlined,
     LogoutOutlined,
-    SettingOutlined
+    SettingOutlined, ReadOutlined
 } from '@ant-design/icons';
 import { useNavigate, Outlet, useLocation } from 'react-router-dom';
 import { authService } from '../utils/auth';
@@ -44,6 +44,7 @@ const Dashboard = () => {
         // === 重点：这一项需要权限控制 ===
         getItem('用户管理', '/dashboard/users', <UserOutlined />),
 
+        getItem('维保标准库', '/dashboard/standards', <ReadOutlined />),
         getItem('任务管理', '/dashboard/tasks', <OrderedListOutlined />),
         getItem('系统设置', 'settings', <SettingOutlined />, [
             getItem('修改密码', '/dashboard/change-password'),
