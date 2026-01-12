@@ -6,7 +6,7 @@ import {
 import {
     PlusOutlined, FileTextOutlined, EnvironmentOutlined,
     RocketOutlined, SaveOutlined, EditOutlined, DeleteOutlined,
-    SearchOutlined, ReloadOutlined
+    SearchOutlined, ReloadOutlined, StopOutlined, EyeOutlined
 } from '@ant-design/icons';
 import request from '../utils/request';
 import { authService } from '../utils/auth';
@@ -43,6 +43,11 @@ const TaskList = () => {
     const [selectedStandardIds, setSelectedStandardIds] = useState([]);
     const [stdLoading, setStdLoading] = useState(false);
     const [searchText, setSearchText] = useState(''); // 搜索关键词
+
+    // 新增：详情弹窗状态
+    const [isDetailOpen, setIsDetailOpen] = useState(false);
+    const [currentTaskDetail, setCurrentTaskDetail] = useState(null);
+    const [detailItems, setDetailItems] = useState([]); // 详情里的检查项
 
     useEffect(() => {
         fetchTasks();
@@ -151,8 +156,8 @@ const TaskList = () => {
             // 处理时间
             let startTime = null, endTime = null;
             if (values.timeRange && values.timeRange.length === 2) {
-                startTime = values.timeRange[0].format('YYYY-MM-DD HH:mm:ss');
-                endTime = values.timeRange[1].format('YYYY-MM-DD HH:mm:ss');
+                startTime = values.timeRange[0].format('YYYY-MM-DD');
+                endTime = values.timeRange[1].format('YYYY-MM-DD');
             }
 
             const payload = {
@@ -219,35 +224,67 @@ const TaskList = () => {
         // 显示时间范围
         { title: '起止时间', key: 'time', width: 200, render: (_, r) => (
                 <div style={{ fontSize: 12, color: '#666' }}>
-                    <div>{r.startTime ? dayjs(r.startTime).format('YYYY-MM-DD HH:mm') : '-'}</div>
-                    <div>{r.endTime ? dayjs(r.endTime).format('YYYY-MM-DD HH:mm') : '-'}</div>
+                    {/* 只显示日期 */}
+                    <div>{r.startTime}</div>
+                    <div>{r.endTime}</div>
                 </div>
             )
         },
         { title: '状态', dataIndex: 'status', key: 'status',
             render: s => {
-                const color = s === 'DRAFT' ? 'default' : s === 'PENDING' ? 'processing' : 'success';
-                const text = s === 'DRAFT' ? '草稿' : s === 'PENDING' ? '待执行' : '已完成';
+                let color = 'default';
+                let text = '未知';
+                switch(s) {
+                    case 'DRAFT': color='default'; text='草稿'; break;
+                    case 'PENDING': color='orange'; text='待执行'; break;
+                    case 'IN_PROGRESS': color='processing'; text='执行中'; break;
+                    case 'COMPLETED': color='success'; text='已完成'; break;
+                    case 'DISCARDED': color='error'; text='已废弃'; break;
+                }
                 return <Tag color={color}>{text}</Tag>;
             }
         },
-        { title: '操作', key: 'action', width: 220, render: (_, record) => (
+        {
+            title: '创建时间',
+            dataIndex: 'createTime',
+            key: 'createTime',
+            width: 160,
+            render: (text) => {
+                // 后端返回的 createTime 可能是 ISO 字符串，用 dayjs 格式化
+                return text ? dayjs(text).format('YYYY-MM-DD HH:mm:ss') : '-';
+            }
+        },
+        { title: '操作', key: 'action', width: 250, render: (_, record) => (
                 <Space>
-                    {/* 只有超管可以操作 */}
+                    {/* 超管操作 */}
                     {isSuperAdmin && (
                         <>
-                            {record.status === 'DRAFT' && (
-                                <Popconfirm title="确认发布?" onConfirm={() => handlePublish(record.id)}>
-                                    <Button type="link" size="small" icon={<RocketOutlined />}>发布</Button>
-                                </Popconfirm>
+                            {record.status === 'DRAFT' ? (
+                                <>
+                                    <Popconfirm title="确认发布?" onConfirm={() => handlePublish(record.id)}>
+                                        <Button type="link" size="small" icon={<RocketOutlined />}>发布</Button>
+                                    </Popconfirm>
+                                    <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleOpenEdit(record)}>编辑</Button>
+                                    <Popconfirm title="确认删除?" description="物理删除" onConfirm={() => handleDelete(record.id)}>
+                                        <Button type="link" danger size="small" icon={<DeleteOutlined />}>删除</Button>
+                                    </Popconfirm>
+                                </>
+                            ) : (
+                                // 非草稿状态 (已发布/执行中/已完成) -> 只能废弃，不能物理删除
+                                record.status !== 'DISCARDED' && (
+                                    <>
+                                        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleOpenEdit(record)}>编辑</Button>
+                                        <Popconfirm title="确认废弃?" description="废弃后不可恢复" onConfirm={() => handleDelete(record.id)}>
+                                            <Button type="link" danger size="small" icon={<StopOutlined />}>废弃</Button>
+                                        </Popconfirm>
+                                    </>
+                                )
                             )}
-                            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleOpenEdit(record)}>编辑</Button>
-                            <Popconfirm title="确认删除?" description="删除后无法恢复" onConfirm={() => handleDelete(record.id)}>
-                                <Button type="link" danger size="small" icon={<DeleteOutlined />}>删除</Button>
-                            </Popconfirm>
                         </>
                     )}
-                    {!isSuperAdmin && <Button type="link" size="small">查看详情</Button>}
+
+                    {/* 通用操作：查看详情 */}
+                    <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewDetail(record)}>详情</Button>
                 </Space>
             )}
     ];
@@ -257,6 +294,16 @@ const TaskList = () => {
         { title: '子系统', dataIndex: 'subSystem', width: 150 },
         { title: '检查内容', dataIndex: 'content', ellipsis: true },
     ];
+    // === 修改：查看详情 ===
+    const handleViewDetail = async (record) => {
+        // 1. 设置当前任务基本信息
+        setCurrentTaskDetail(record);
+        const res = await request.get(`/api/tasks/${record.id}/items`); // 需后端配合
+        if (res.code === 200) {
+            setDetailItems(res.data);
+            setIsDetailOpen(true);
+        }
+    };
 
     return (
         <div>
@@ -287,6 +334,7 @@ const TaskList = () => {
                                     {/* 超管能看到草稿，普通用户只能看到待执行/已完成，这里做通用配置，后端会自动过滤 */}
                                     {isSuperAdmin && <Option value="DRAFT">草稿</Option>}
                                     <Option value="PENDING">待执行</Option>
+                                    <Option value="PENDING">执行中</Option>
                                     <Option value="COMPLETED">已完成</Option>
                                 </Select>
                             </Form.Item>
@@ -365,7 +413,7 @@ const TaskList = () => {
                         <Col span={12}>
                             {/* === 优化点 2：时间范围选择器 === */}
                             <Form.Item name="timeRange" label="起止时间" rules={[{ required: true }]}>
-                                <RangePicker showTime format="YYYY-MM-DD HH:mm" style={{ width: '100%' }} />
+                                <RangePicker format="YYYY-MM-DD" style={{ width: '100%' }} />
                             </Form.Item>
                         </Col>
                     </Row>
@@ -400,6 +448,41 @@ const TaskList = () => {
                         }}
                     />
                 </Form>
+            </Modal>
+            {/* === 新增：任务详情 Modal === */}
+            <Modal
+                title="任务详情"
+                open={isDetailOpen}
+                onCancel={() => setIsDetailOpen(false)}
+                footer={[<Button key="close" onClick={() => setIsDetailOpen(false)}>关闭</Button>]}
+                width={800}
+            >
+                {currentTaskDetail && (
+                    <div>
+                        <div style={{ marginBottom: 20, background: '#f5f5f5', padding: 15, borderRadius: 6 }}>
+                            <h3>{currentTaskDetail.title}</h3>
+                            <Space split={<Divider type="vertical" />}>
+                                <span>地址: {currentTaskDetail.address}</span>
+                                <span>小组: {currentTaskDetail.groupName}</span>
+                                <span>周期: {currentTaskDetail.startTime} ~ {currentTaskDetail.endTime}</span>
+                            </Space>
+                        </div>
+
+                        <h4>维保检查内容：</h4>
+                        <Table
+                            dataSource={detailItems}
+                            rowKey="id"
+                            pagination={false}
+                            size="small"
+                            bordered
+                            columns={[
+                                { title: '系统类别', dataIndex: 'category', width: 150 },
+                                { title: '子系统', dataIndex: 'subSystem', width: 150 },
+                                { title: '检查标准', dataIndex: 'content' }
+                            ]}
+                        />
+                    </div>
+                )}
             </Modal>
         </div>
     );
