@@ -1,21 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import {
     Table, Card, Button, Modal, Form, Input,
-    Select, Tag, Space, message, Divider, DatePicker, Popconfirm, Row, Col
+    Select, Tag, Space, message, Divider, DatePicker, Popconfirm, Row, Col,
+    Checkbox, InputNumber
 } from 'antd';
 import {
     PlusOutlined, FileTextOutlined, EnvironmentOutlined,
     RocketOutlined, SaveOutlined, EditOutlined, DeleteOutlined,
-    SearchOutlined, ReloadOutlined, StopOutlined, EyeOutlined
+    SearchOutlined, ReloadOutlined, StopOutlined, EyeOutlined, TeamOutlined
 } from '@ant-design/icons';
 import request from '../utils/request';
 import { authService } from '../utils/auth';
-import dayjs from 'dayjs'; // 必须确保安装了 dayjs (npm install dayjs)
+import dayjs from 'dayjs';
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
 
+// 辅助函数：将内容字符串按换行符拆分为数组
+const parseContentToOptions = (content) => {
+    if (!content) return [];
+    return content.split('\n').filter(line => line.trim() !== '');
+};
+
 const TaskList = () => {
+    // === 用户身份 ===
     const currentUser = authService.getUserInfo();
     const isSuperAdmin = currentUser.role === 'SUPER_ADMIN';
 
@@ -26,28 +34,32 @@ const TaskList = () => {
     const [pageSize, setPageSize] = useState(10);
     const [loading, setLoading] = useState(false);
 
+    // === 搜索表单 ===
+    const [searchForm] = Form.useForm();
+
     // === 弹窗状态 (新建/编辑) ===
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalType, setModalType] = useState('create'); // 'create' | 'edit'
-    const [editingTaskId, setEditingTaskId] = useState(null); // 当前编辑的ID
+    const [editingTaskId, setEditingTaskId] = useState(null);
     const [form] = Form.useForm();
 
-    const [searchForm] = Form.useForm()
+    // === 详情弹窗状态 ===
+    const [isDetailOpen, setIsDetailOpen] = useState(false);
+    const [currentTaskDetail, setCurrentTaskDetail] = useState(null);
+    const [detailItems, setDetailItems] = useState([]);
 
     // === 基础数据 ===
     const [groups, setGroups] = useState([]);
 
     // === 标准库选择相关 ===
-    const [allStandards, setAllStandards] = useState([]); // 从后端拉取的所有标准
+    const [allStandards, setAllStandards] = useState([]); // 所有标准
     const [filteredStandards, setFilteredStandards] = useState([]); // 过滤后的标准(展示用)
-    const [selectedStandardIds, setSelectedStandardIds] = useState([]);
     const [stdLoading, setStdLoading] = useState(false);
-    const [searchText, setSearchText] = useState(''); // 搜索关键词
+    const [searchText, setSearchText] = useState(''); // 标准搜索关键词
 
-    // 新增：详情弹窗状态
-    const [isDetailOpen, setIsDetailOpen] = useState(false);
-    const [currentTaskDetail, setCurrentTaskDetail] = useState(null);
-    const [detailItems, setDetailItems] = useState([]); // 详情里的检查项
+    // === 核心状态：选中的标准项 Map ===
+    // 结构: { standardId: { quantity: number, checkedLines: string[] } }
+    const [selectedItemsMap, setSelectedItemsMap] = useState({});
 
     useEffect(() => {
         fetchTasks();
@@ -57,7 +69,7 @@ const TaskList = () => {
         }
     }, [page, pageSize]);
 
-    // 监听搜索词变化，前端过滤标准库
+    // 监听标准库搜索词变化
     useEffect(() => {
         if (!searchText) {
             setFilteredStandards(allStandards);
@@ -71,23 +83,20 @@ const TaskList = () => {
         }
     }, [searchText, allStandards]);
 
-    // --- API ---
+    // --- API 请求 ---
     const fetchTasks = async () => {
         setLoading(true);
         try {
-            // 1. 获取搜索栏的值
             const searchValues = searchForm.getFieldsValue();
-
             const res = await request.get('/api/tasks/list', {
                 params: {
                     pageNum: page,
                     pageSize: pageSize,
                     username: authService.getUsername(),
-                    // 2. 传递筛选参数
                     title: searchValues.title,
                     address: searchValues.address,
                     status: searchValues.status,
-                    queryGroupId: searchValues.queryGroupId // 注意：参数名要和后端对齐
+                    queryGroupId: searchValues.queryGroupId
                 }
             });
             if (res.code === 200) {
@@ -112,24 +121,68 @@ const TaskList = () => {
         setStdLoading(false);
     };
 
+    // === 逻辑：表格勾选变化 ===
+    const handleRowSelectionChange = (selectedRowKeys, selectedRows) => {
+        const newMap = { ...selectedItemsMap };
+
+        // 1. 如果当前 Map 中的 ID 不在 selectedRowKeys 里，说明被取消勾选了 -> 删除
+        Object.keys(newMap).forEach(key => {
+            if (!selectedRowKeys.includes(Number(key))) {
+                delete newMap[key];
+            }
+        });
+
+        // 2. 如果 selectedRows 里的 ID 不在 Map 里，说明是新勾选的 -> 初始化
+        selectedRows.forEach(row => {
+            if (!newMap[row.id]) {
+                newMap[row.id] = {
+                    quantity: 1, // 默认数量 1
+                    checkedLines: parseContentToOptions(row.content) // 默认全选内容
+                };
+            }
+        });
+
+        setSelectedItemsMap(newMap);
+    };
+
+    // === 逻辑：修改数量 ===
+    const handleQuantityChange = (id, val) => {
+        setSelectedItemsMap(prev => ({
+            ...prev,
+            [id]: { ...prev[id], quantity: val }
+        }));
+    };
+
+    // === 逻辑：修改检查内容勾选 ===
+    const handleContentCheckChange = (id, checkedValues) => {
+        setSelectedItemsMap(prev => ({
+            ...prev,
+            [id]: { ...prev[id], checkedLines: checkedValues }
+        }));
+    };
+
+    // === 操作：搜索与重置 ===
+    const handleSearch = () => { setPage(1); fetchTasks(); };
+    const handleReset = () => { searchForm.resetFields(); setPage(1); fetchTasks(); };
+
     // === 操作：打开新建弹窗 ===
     const handleOpenCreate = () => {
         setModalType('create');
         setEditingTaskId(null);
         form.resetFields();
-        setSelectedStandardIds([]);
+        setSelectedItemsMap({});
         setSearchText('');
         setIsModalOpen(true);
     };
 
-    // === 操作：打开编辑弹窗 ===
+    // === 操作：打开编辑弹窗 (回显) ===
     const handleOpenEdit = async (record) => {
         setModalType('edit');
         setEditingTaskId(record.id);
         setIsModalOpen(true);
-        setSearchText(''); // 重置搜索
+        setSearchText('');
 
-        // 获取详情回填
+        // 1. 回显基本信息
         const res = await request.get(`/api/tasks/${record.id}`);
         if (res.code === 200) {
             const data = res.data;
@@ -137,21 +190,53 @@ const TaskList = () => {
                 title: data.title,
                 address: data.address,
                 groupId: data.groupId,
-                // 回填时间范围
                 timeRange: (data.startTime && data.endTime) ? [dayjs(data.startTime), dayjs(data.endTime)] : []
             });
-            setSelectedStandardIds(data.standardIds || []);
+
+            // 2. 回显检查项 (需要构建 Map)
+            // 注意：这里假设后端提供了一个获取 items 的接口，或者 getDetail 里包含了 items
+            // 我们调用之前定义的 /items 接口
+            const itemsRes = await request.get(`/api/tasks/${record.id}/items`);
+            if (itemsRes.code === 200) {
+                const newMap = {};
+                itemsRes.data.forEach(item => {
+                    newMap[item.standardId] = {
+                        quantity: item.quantity || 1,
+                        // 数据库存的是快照字符串，直接拆分回数组
+                        checkedLines: parseContentToOptions(item.content)
+                    };
+                });
+                setSelectedItemsMap(newMap);
+            }
         }
     };
 
-    // === 操作：提交表单 (新建/更新) ===
+    // === 操作：提交表单 ===
     const handleSubmit = async (isPublish) => {
         try {
             const values = await form.validateFields();
-            if (selectedStandardIds.length === 0) {
+
+            const selectedIds = Object.keys(selectedItemsMap);
+            if (selectedIds.length === 0) {
                 message.error('请至少选择一项维保标准');
                 return;
             }
+
+            // 校验：内容不能为空
+            for (const id of selectedIds) {
+                const item = selectedItemsMap[id];
+                if (!item.checkedLines || item.checkedLines.length === 0) {
+                    message.error('每个选中的设备至少需要勾选一项检查内容');
+                    return;
+                }
+            }
+
+            // 组装 items 数据
+            const itemsPayload = selectedIds.map(id => ({
+                standardId: Number(id),
+                quantity: selectedItemsMap[id].quantity,
+                selectedContent: selectedItemsMap[id].checkedLines.join('\n') // 拼回字符串
+            }));
 
             // 处理时间
             let startTime = null, endTime = null;
@@ -164,7 +249,7 @@ const TaskList = () => {
                 title: values.title,
                 address: values.address,
                 groupId: values.groupId,
-                standardIds: selectedStandardIds,
+                items: itemsPayload, // 注意：后端 DTO 字段名改为 items
                 publish: isPublish,
                 createBy: currentUser.username,
                 startTime,
@@ -187,53 +272,38 @@ const TaskList = () => {
         } catch (error) { console.error(error); }
     };
 
-    // === 新增：搜索和重置操作 ===
-    const handleSearch = () => {
-        setPage(1); // 搜索时重置回第一页
-        fetchTasks();
-    };
-
-    const handleReset = () => {
-        searchForm.resetFields();
-        setPage(1);
-        fetchTasks();
-    };
-
-    // === 操作：删除 ===
+    // === 操作：删除/废弃/发布 ===
     const handleDelete = async (id) => {
         const res = await request.delete(`/api/tasks/${id}`);
-        if (res.code === 200) {
-            message.success('删除成功');
-            fetchTasks();
-        }
+        if (res.code === 200) { message.success('操作成功'); fetchTasks(); }
     };
-
-    // === 操作：单独发布 ===
     const handlePublish = async (id) => {
         const res = await request.put(`/api/tasks/${id}/publish`);
+        if (res.code === 200) { message.success('发布成功'); fetchTasks(); }
+    };
+
+    // === 操作：查看详情 ===
+    const handleViewDetail = async (record) => {
+        setCurrentTaskDetail(record);
+        const res = await request.get(`/api/tasks/${record.id}/items`);
         if (res.code === 200) {
-            message.success('发布成功');
-            fetchTasks();
+            setDetailItems(res.data);
+            setIsDetailOpen(true);
         }
     };
 
+    // --- 列定义: 主列表 ---
     const columns = [
         { title: '任务标题', dataIndex: 'title', key: 'title', render: t => <b>{t}</b> },
         { title: '维保地址', dataIndex: 'address', key: 'address', render: t => <Space><EnvironmentOutlined />{t}</Space> },
         { title: '执行小组', dataIndex: 'groupName', key: 'groupName', render: t => <Tag color="blue">{t || '未指定'}</Tag> },
-        // 显示时间范围
-        { title: '起止时间', key: 'time', width: 200, render: (_, r) => (
-                <div style={{ fontSize: 12, color: '#666' }}>
-                    {/* 只显示日期 */}
-                    <div>{r.startTime}</div>
-                    <div>{r.endTime}</div>
-                </div>
+        { title: '起止时间', key: 'time', width: 180, render: (_, r) => (
+                <div style={{ fontSize: 12, color: '#666' }}><div>始: {r.startTime}</div><div>止: {r.endTime}</div></div>
             )
         },
         { title: '状态', dataIndex: 'status', key: 'status',
             render: s => {
-                let color = 'default';
-                let text = '未知';
+                let color = 'default'; let text = '未知';
                 switch(s) {
                     case 'DRAFT': color='default'; text='草稿'; break;
                     case 'PENDING': color='orange'; text='待执行'; break;
@@ -244,117 +314,108 @@ const TaskList = () => {
                 return <Tag color={color}>{text}</Tag>;
             }
         },
-        {
-            title: '创建时间',
-            dataIndex: 'createTime',
-            key: 'createTime',
-            width: 160,
-            render: (text) => {
-                // 后端返回的 createTime 可能是 ISO 字符串，用 dayjs 格式化
-                return text ? dayjs(text).format('YYYY-MM-DD HH:mm:ss') : '-';
-            }
-        },
-        { title: '操作', key: 'action', width: 250, render: (_, record) => (
+        { title: '创建时间', dataIndex: 'createTime', width: 150, render: t => t ? dayjs(t).format('YYYY-MM-DD HH:mm') : '-' },
+        { title: '操作', key: 'action', width: 220, render: (_, record) => (
                 <Space>
-                    {/* 超管操作 */}
                     {isSuperAdmin && (
                         <>
                             {record.status === 'DRAFT' ? (
                                 <>
-                                    <Popconfirm title="确认发布?" onConfirm={() => handlePublish(record.id)}>
-                                        <Button type="link" size="small" icon={<RocketOutlined />}>发布</Button>
-                                    </Popconfirm>
+                                    <Popconfirm title="确认发布?" onConfirm={() => handlePublish(record.id)}><Button type="link" size="small" icon={<RocketOutlined />}>发布</Button></Popconfirm>
                                     <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleOpenEdit(record)}>编辑</Button>
-                                    <Popconfirm title="确认删除?" description="物理删除" onConfirm={() => handleDelete(record.id)}>
-                                        <Button type="link" danger size="small" icon={<DeleteOutlined />}>删除</Button>
-                                    </Popconfirm>
+                                    <Popconfirm title="确认删除?" description="物理删除" onConfirm={() => handleDelete(record.id)}><Button type="link" danger size="small" icon={<DeleteOutlined />}>删除</Button></Popconfirm>
                                 </>
                             ) : (
-                                // 非草稿状态 (已发布/执行中/已完成) -> 只能废弃，不能物理删除
                                 record.status !== 'DISCARDED' && (
                                     <>
                                         <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleOpenEdit(record)}>编辑</Button>
-                                        <Popconfirm title="确认废弃?" description="废弃后不可恢复" onConfirm={() => handleDelete(record.id)}>
-                                            <Button type="link" danger size="small" icon={<StopOutlined />}>废弃</Button>
-                                        </Popconfirm>
+                                        <Popconfirm title="确认废弃?" description="废弃后不可恢复" onConfirm={() => handleDelete(record.id)}><Button type="link" danger size="small" icon={<StopOutlined />}>废弃</Button></Popconfirm>
                                     </>
                                 )
                             )}
                         </>
                     )}
-
-                    {/* 通用操作：查看详情 */}
                     <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewDetail(record)}>详情</Button>
                 </Space>
             )}
     ];
 
+    // --- 列定义: 弹窗内的标准选择表格 (核心修改) ---
     const stdColumns = [
-        { title: '系统类别', dataIndex: 'category', width: 150 },
-        { title: '子系统', dataIndex: 'subSystem', width: 150 },
-        { title: '检查内容', dataIndex: 'content', ellipsis: true },
+        { title: '系统', dataIndex: 'category', width: 100 },
+        { title: '设备', dataIndex: 'subSystem', width: 120 },
+        {
+            title: '数量',
+            key: 'quantity',
+            width: 100,
+            render: (_, record) => {
+                const isSelected = !!selectedItemsMap[record.id];
+                return isSelected ? (
+                    <InputNumber
+                        min={1}
+                        size="small"
+                        value={selectedItemsMap[record.id]?.quantity}
+                        onChange={(val) => handleQuantityChange(record.id, val)}
+                    />
+                ) : '-';
+            }
+        },
+        {
+            title: '检查内容 (可多选)',
+            key: 'content',
+            render: (_, record) => {
+                const isSelected = !!selectedItemsMap[record.id];
+                const allOptions = parseContentToOptions(record.content);
+
+                if (!isSelected) {
+                    return <div style={{whiteSpace: 'pre-wrap', color: '#999', fontSize: 12}}>{record.content}</div>;
+                }
+
+                return (
+                    <Checkbox.Group
+                        options={allOptions}
+                        value={selectedItemsMap[record.id]?.checkedLines}
+                        onChange={(vals) => handleContentCheckChange(record.id, vals)}
+                        style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}
+                    />
+                );
+            }
+        },
     ];
-    // === 修改：查看详情 ===
-    const handleViewDetail = async (record) => {
-        // 1. 设置当前任务基本信息
-        setCurrentTaskDetail(record);
-        const res = await request.get(`/api/tasks/${record.id}/items`); // 需后端配合
-        if (res.code === 200) {
-            setDetailItems(res.data);
-            setIsDetailOpen(true);
-        }
-    };
 
     return (
         <div>
-            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h2><FileTextOutlined /> 巡检任务管理</h2>
-                {isSuperAdmin && (
-                    <Button type="primary" icon={<PlusOutlined />} onClick={handleOpenCreate}>新建任务</Button>
-                )}
+                {isSuperAdmin && <Button type="primary" icon={<PlusOutlined />} onClick={handleOpenCreate}>新建任务</Button>}
             </div>
 
-            {/* === 新增：搜索区域 === */}
+            {/* 搜索栏 */}
             <Card style={{ marginBottom: 16 }} bodyStyle={{ padding: '24px 24px 0 24px' }}>
                 <Form form={searchForm} layout="inline" onFinish={handleSearch}>
                     <Row gutter={[16, 16]} style={{ width: '100%' }}>
+                        <Col span={6}><Form.Item name="title" label="任务标题" style={{ width: '100%' }}><Input placeholder="模糊搜索" allowClear /></Form.Item></Col>
+                        <Col span={6}><Form.Item name="address" label="维保地址" style={{ width: '100%' }}><Input placeholder="模糊搜索" allowClear /></Form.Item></Col>
                         <Col span={6}>
-                            <Form.Item name="title" label="任务标题" style={{ width: '100%' }}>
-                                <Input placeholder="支持模糊搜索" allowClear />
-                            </Form.Item>
-                        </Col>
-                        <Col span={6}>
-                            <Form.Item name="address" label="维保地址" style={{ width: '100%' }}>
-                                <Input placeholder="支持模糊搜索" allowClear />
-                            </Form.Item>
-                        </Col>
-                        <Col span={6}>
-                            <Form.Item name="status" label="任务状态" style={{ width: '100%' }}>
+                            <Form.Item name="status" label="状态" style={{ width: '100%' }}>
                                 <Select placeholder="全部" allowClear>
-                                    {/* 超管能看到草稿，普通用户只能看到待执行/已完成，这里做通用配置，后端会自动过滤 */}
                                     {isSuperAdmin && <Option value="DRAFT">草稿</Option>}
                                     <Option value="PENDING">待执行</Option>
-                                    <Option value="PENDING">执行中</Option>
+                                    <Option value="IN_PROGRESS">执行中</Option>
                                     <Option value="COMPLETED">已完成</Option>
+                                    {isSuperAdmin && <Option value="DISCARDED">已废弃</Option>}
                                 </Select>
                             </Form.Item>
                         </Col>
-                        {/* 只有超管可以筛选执行小组 */}
                         {isSuperAdmin && (
                             <Col span={6}>
-                                <Form.Item name="queryGroupId" label="执行小组" style={{ width: '100%' }}>
-                                    <Select placeholder="全部" allowClear>
-                                        {groups.map(g => <Option key={g.id} value={g.id}>{g.name}</Option>)}
-                                    </Select>
+                                <Form.Item name="queryGroupId" label="小组" style={{ width: '100%' }}>
+                                    <Select placeholder="全部" allowClear>{groups.map(g => <Option key={g.id} value={g.id}>{g.name}</Option>)}</Select>
                                 </Form.Item>
                             </Col>
                         )}
-
                         <Col span={24} style={{ textAlign: 'right' }}>
-                            <Space>
-                                <Button icon={<ReloadOutlined />} onClick={handleReset}>重置</Button>
-                                <Button type="primary" icon={<SearchOutlined />} htmlType="submit">查询</Button>
-                            </Space>
+                            <Space><Button icon={<ReloadOutlined />} onClick={handleReset}>重置</Button><Button type="primary" icon={<SearchOutlined />} htmlType="submit">查询</Button></Space>
                         </Col>
                     </Row>
                 </Form>
@@ -362,57 +423,35 @@ const TaskList = () => {
 
             <Card>
                 <Table
-                    columns={columns}
-                    dataSource={tasks}
-                    rowKey="id"
-                    loading={loading}
-                    pagination={{
-                        current: page,
-                        pageSize: pageSize,
-                        total: total,
-                        showSizeChanger: true,
-                        onChange: (p, s) => { setPage(p); setPageSize(s); }
-                    }}
+                    columns={columns} dataSource={tasks} rowKey="id" loading={loading}
+                    pagination={{ current: page, pageSize: pageSize, total: total, showSizeChanger: true, onChange: (p, s) => { setPage(p); setPageSize(s); } }}
                 />
             </Card>
 
+            {/* 新建/编辑任务弹窗 */}
             <Modal
                 title={modalType === 'create' ? "新建巡检任务" : "编辑巡检任务"}
                 open={isModalOpen}
                 onCancel={() => setIsModalOpen(false)}
-                width={900}
+                width={1000}
                 footer={[
                     <Button key="draft" icon={<SaveOutlined />} onClick={() => handleSubmit(false)}>保存草稿</Button>,
-                    <Button key="publish" type="primary" icon={<RocketOutlined />} onClick={() => handleSubmit(true)}>
-                        {modalType === 'create' ? '立即发布' : '保存并发布'}
-                    </Button>
+                    <Button key="publish" type="primary" icon={<RocketOutlined />} onClick={() => handleSubmit(true)}>{modalType === 'create' ? '立即发布' : '保存并发布'}</Button>
                 ]}
             >
                 <Form form={form} layout="vertical">
                     <Row gutter={16}>
-                        <Col span={12}>
-                            <Form.Item name="title" label="任务标题" rules={[{ required: true }]}>
-                                <Input placeholder="例：2026年1月大运中心维保" />
-                            </Form.Item>
-                        </Col>
-                        <Col span={12}>
-                            <Form.Item name="address" label="维保地址" rules={[{ required: true }]}>
-                                <Input prefix={<EnvironmentOutlined />} />
-                            </Form.Item>
-                        </Col>
+                        <Col span={12}><Form.Item name="title" label="任务标题" rules={[{ required: true }]}><Input placeholder="例：2026年1月大运中心维保" /></Form.Item></Col>
+                        <Col span={12}><Form.Item name="address" label="维保地址" rules={[{ required: true }]}><Input prefix={<EnvironmentOutlined />} /></Form.Item></Col>
                     </Row>
-
                     <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item name="groupId" label="指派小组" rules={[{ required: true }]}>
-                                <Select placeholder="选择执行小组">
-                                    {groups.map(g => <Option key={g.id} value={g.id}>{g.name}</Option>)}
-                                </Select>
+                                <Select placeholder="选择执行小组">{groups.map(g => <Option key={g.id} value={g.id}>{g.name}</Option>)}</Select>
                             </Form.Item>
                         </Col>
                         <Col span={12}>
-                            {/* === 优化点 2：时间范围选择器 === */}
-                            <Form.Item name="timeRange" label="起止时间" rules={[{ required: true }]}>
+                            <Form.Item name="timeRange" label="起止日期" rules={[{ required: true }]}>
                                 <RangePicker format="YYYY-MM-DD" style={{ width: '100%' }} />
                             </Form.Item>
                         </Col>
@@ -420,7 +459,6 @@ const TaskList = () => {
 
                     <Divider orientation="left">选择维保标准项</Divider>
 
-                    {/* === 优化点 1：模糊搜索框 === */}
                     <Input
                         prefix={<SearchOutlined />}
                         placeholder="输入系统类别或设备名称进行筛选..."
@@ -429,46 +467,45 @@ const TaskList = () => {
                         onChange={e => setSearchText(e.target.value)}
                         allowClear
                     />
-                    <span style={{ marginLeft: 10, color: '#999' }}>
-            (已选 {selectedStandardIds.length} 项)
-          </span>
+                    <span style={{ marginLeft: 10, color: '#999' }}>(已选 {Object.keys(selectedItemsMap).length} 个设备)</span>
 
                     <Table
                         rowKey="id"
                         columns={stdColumns}
-                        dataSource={filteredStandards} // 使用过滤后的数据源
+                        dataSource={filteredStandards}
                         loading={stdLoading}
                         size="small"
-                        scroll={{ y: 300 }}
+                        scroll={{ y: 400 }}
                         pagination={false}
                         rowSelection={{
                             type: 'checkbox',
-                            selectedRowKeys: selectedStandardIds,
-                            onChange: setSelectedStandardIds
+                            selectedRowKeys: Object.keys(selectedItemsMap).map(Number),
+                            onChange: handleRowSelectionChange
                         }}
                     />
                 </Form>
             </Modal>
-            {/* === 新增：任务详情 Modal === */}
+
+            {/* 任务详情弹窗 */}
             <Modal
                 title="任务详情"
                 open={isDetailOpen}
                 onCancel={() => setIsDetailOpen(false)}
                 footer={[<Button key="close" onClick={() => setIsDetailOpen(false)}>关闭</Button>]}
-                width={800}
+                width={900}
             >
                 {currentTaskDetail && (
                     <div>
-                        <div style={{ marginBottom: 20, background: '#f5f5f5', padding: 15, borderRadius: 6 }}>
-                            <h3>{currentTaskDetail.title}</h3>
-                            <Space split={<Divider type="vertical" />}>
-                                <span>地址: {currentTaskDetail.address}</span>
-                                <span>小组: {currentTaskDetail.groupName}</span>
+                        <div style={{ marginBottom: 20, background: '#f9f9f9', padding: 15, borderRadius: 6, border: '1px solid #eee' }}>
+                            <h3 style={{marginTop:0}}>{currentTaskDetail.title}</h3>
+                            <Space split={<Divider type="vertical" />} wrap>
+                                <span><EnvironmentOutlined /> {currentTaskDetail.address}</span>
+                                <span><TeamOutlined /> {currentTaskDetail.groupName}</span>
                                 <span>周期: {currentTaskDetail.startTime} ~ {currentTaskDetail.endTime}</span>
                             </Space>
                         </div>
 
-                        <h4>维保检查内容：</h4>
+                        <h4>维保检查明细：</h4>
                         <Table
                             dataSource={detailItems}
                             rowKey="id"
@@ -476,9 +513,10 @@ const TaskList = () => {
                             size="small"
                             bordered
                             columns={[
-                                { title: '系统类别', dataIndex: 'category', width: 150 },
-                                { title: '子系统', dataIndex: 'subSystem', width: 150 },
-                                { title: '检查标准', dataIndex: 'content' }
+                                { title: '系统', dataIndex: 'category', width: 120 },
+                                { title: '设备', dataIndex: 'subSystem', width: 120 },
+                                { title: '数量', dataIndex: 'quantity', width: 80, align: 'center' },
+                                { title: '检查标准', dataIndex: 'content', render: t => <div style={{whiteSpace:'pre-wrap'}}>{t}</div> }
                             ]}
                         />
                     </div>
