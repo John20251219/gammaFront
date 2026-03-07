@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
     Table, Card, Button, Modal, Form, Input,
     Select, Tag, Space, message, Divider, DatePicker, Popconfirm, Row, Col,
-    Checkbox, InputNumber
+    Checkbox, InputNumber, Image, Progress
 } from 'antd';
 import {
     PlusOutlined, FileTextOutlined, EnvironmentOutlined,
     RocketOutlined, SaveOutlined, EditOutlined, DeleteOutlined,
-    SearchOutlined, ReloadOutlined, StopOutlined, EyeOutlined, TeamOutlined
+    SearchOutlined, ReloadOutlined, StopOutlined, EyeOutlined, TeamOutlined, PictureOutlined, UserOutlined, ClockCircleOutlined
 } from '@ant-design/icons';
 import request from '../utils/request';
 import { authService } from '../utils/auth';
@@ -23,6 +24,8 @@ const parseContentToOptions = (content) => {
 };
 
 const TaskList = () => {
+    const location = useLocation();
+    const navigate = useNavigate();
     // === 用户身份 ===
     const currentUser = authService.getUserInfo();
     const isSuperAdmin = currentUser.role === 'SUPER_ADMIN';
@@ -47,6 +50,7 @@ const TaskList = () => {
     const [isDetailOpen, setIsDetailOpen] = useState(false);
     const [currentTaskDetail, setCurrentTaskDetail] = useState(null);
     const [detailItems, setDetailItems] = useState([]);
+    const [detailImages, setDetailImages] = useState([]); // 小程序上传的图片（含上传人、时间）
 
     // === 基础数据 ===
     const [groups, setGroups] = useState([]);
@@ -68,6 +72,28 @@ const TaskList = () => {
             fetchStandards();
         }
     }, [page, pageSize]);
+
+    // 从主页概览「执行中的任务进度」跳转过来时，自动打开对应任务详情
+    useEffect(() => {
+        const taskId = location.state?.openDetailTaskId;
+        if (!taskId) return;
+        (async () => {
+            try {
+                const [detailRes, itemsRes, imagesRes] = await Promise.all([
+                    request.get(`/api/tasks/${taskId}`),
+                    request.get(`/api/tasks/${taskId}/items`),
+                    request.get(`/api/tasks/${taskId}/images-for-admin`),
+                ]);
+                if (detailRes.code === 200 && detailRes.data) {
+                    setCurrentTaskDetail(detailRes.data);
+                    if (itemsRes.code === 200) setDetailItems(itemsRes.data || []);
+                    if (imagesRes.code === 200) setDetailImages(imagesRes.data || []);
+                    setIsDetailOpen(true);
+                }
+            } catch (e) { message.error('加载任务详情失败'); }
+            navigate('/dashboard/tasks', { replace: true, state: {} });
+        })();
+    }, [location.state?.openDetailTaskId, navigate]);
 
     // 监听标准库搜索词变化
     useEffect(() => {
@@ -285,11 +311,13 @@ const TaskList = () => {
     // === 操作：查看详情 ===
     const handleViewDetail = async (record) => {
         setCurrentTaskDetail(record);
-        const res = await request.get(`/api/tasks/${record.id}/items`);
-        if (res.code === 200) {
-            setDetailItems(res.data);
-            setIsDetailOpen(true);
-        }
+        const [itemsRes, imagesRes] = await Promise.all([
+            request.get(`/api/tasks/${record.id}/items`),
+            request.get(`/api/tasks/${record.id}/images-for-admin`)
+        ]);
+        if (itemsRes.code === 200) setDetailItems(itemsRes.data);
+        if (imagesRes.code === 200) setDetailImages(imagesRes.data || []);
+        setIsDetailOpen(true);
     };
 
     // --- 列定义: 主列表 ---
@@ -304,12 +332,12 @@ const TaskList = () => {
         { title: '状态', dataIndex: 'status', key: 'status',
             render: s => {
                 let color = 'default'; let text = '未知';
-                switch(s) {
-                    case 'DRAFT': color='default'; text='草稿'; break;
-                    case 'PENDING': color='orange'; text='待执行'; break;
-                    case 'IN_PROGRESS': color='processing'; text='执行中'; break;
-                    case 'COMPLETED': color='success'; text='已完成'; break;
-                    case 'DISCARDED': color='error'; text='已废弃'; break;
+                switch (String(s)) {
+                    case '0': color='default'; text='草稿'; break;
+                    case '1': color='orange'; text='待执行'; break;
+                    case '2': color='processing'; text='执行中'; break;
+                    case '3': color='success'; text='已完成'; break;
+                    case '4': color='error'; text='已废弃'; break;
                 }
                 return <Tag color={color}>{text}</Tag>;
             }
@@ -319,14 +347,14 @@ const TaskList = () => {
                 <Space>
                     {isSuperAdmin && (
                         <>
-                            {record.status === 'DRAFT' ? (
+                            {record.status === '0' || record.status === 0 ? (
                                 <>
                                     <Popconfirm title="确认发布?" onConfirm={() => handlePublish(record.id)}><Button type="link" size="small" icon={<RocketOutlined />}>发布</Button></Popconfirm>
                                     <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleOpenEdit(record)}>编辑</Button>
                                     <Popconfirm title="确认删除?" description="物理删除" onConfirm={() => handleDelete(record.id)}><Button type="link" danger size="small" icon={<DeleteOutlined />}>删除</Button></Popconfirm>
                                 </>
                             ) : (
-                                record.status !== 'DISCARDED' && (
+                                (record.status !== '4' && record.status !== 4) && (
                                     <>
                                         <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleOpenEdit(record)}>编辑</Button>
                                         <Popconfirm title="确认废弃?" description="废弃后不可恢复" onConfirm={() => handleDelete(record.id)}><Button type="link" danger size="small" icon={<StopOutlined />}>废弃</Button></Popconfirm>
@@ -399,11 +427,11 @@ const TaskList = () => {
                         <Col span={6}>
                             <Form.Item name="status" label="状态" style={{ width: '100%' }}>
                                 <Select placeholder="全部" allowClear>
-                                    {isSuperAdmin && <Option value="DRAFT">草稿</Option>}
-                                    <Option value="PENDING">待执行</Option>
-                                    <Option value="IN_PROGRESS">执行中</Option>
-                                    <Option value="COMPLETED">已完成</Option>
-                                    {isSuperAdmin && <Option value="DISCARDED">已废弃</Option>}
+                                    {isSuperAdmin && <Option value="0">草稿</Option>}
+                                    <Option value="1">待执行</Option>
+                                    <Option value="2">执行中</Option>
+                                    <Option value="3">已完成</Option>
+                                    {isSuperAdmin && <Option value="4">已废弃</Option>}
                                 </Select>
                             </Form.Item>
                         </Col>
@@ -505,18 +533,57 @@ const TaskList = () => {
                             </Space>
                         </div>
 
-                        <h4>维保检查明细：</h4>
+                        <h4>维保检查明细</h4>
                         <Table
                             dataSource={detailItems}
                             rowKey="id"
                             pagination={false}
                             size="small"
                             bordered
+                            scroll={{ x: 800 }}
                             columns={[
-                                { title: '系统', dataIndex: 'category', width: 120 },
-                                { title: '设备', dataIndex: 'subSystem', width: 120 },
-                                { title: '数量', dataIndex: 'quantity', width: 80, align: 'center' },
-                                { title: '检查标准', dataIndex: 'content', render: t => <div style={{whiteSpace:'pre-wrap'}}>{t}</div> }
+                                { title: '设备', dataIndex: 'subSystem', width: 140, ellipsis: true },
+                                { title: '数量', dataIndex: 'quantity', width: 72, align: 'center' },
+                                { title: '检查标准', dataIndex: 'content', width: 260, render: t => <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{t}</div> },
+                                {
+                                    title: '上传记录',
+                                    key: 'uploadRecords',
+                                    width: 260,
+                                    render: (_, record) => {
+                                        const rowImages = detailImages.filter(img => img.taskItemId === record.id);
+                                        if (!rowImages.length) return <span style={{ color: '#999' }}>暂无上传</span>;
+                                        return (
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                                {rowImages.map((img) => (
+                                                    <div key={img.id} style={{ width: 110, border: '1px solid #eee', borderRadius: 6, overflow: 'hidden', background: '#fafafa' }}>
+                                                        <Image src={img.imageUrl} alt="" style={{ width: 108, height: 108, objectFit: 'cover' }} />
+                                                        <div style={{ padding: '4px 6px', fontSize: 11 }}>
+                                                            <div title={img.uploadBy}><UserOutlined /> {img.uploadBy || '—'}</div>
+                                                            <div style={{ color: '#999' }}><ClockCircleOutlined /> {img.createTime ? dayjs(img.createTime).format('MM-DD HH:mm') : '—'}</div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        );
+                                    }
+                                },
+                                {
+                                    title: '子项进度',
+                                    key: 'itemProgress',
+                                    width: 120,
+                                    align: 'center',
+                                    render: (_, record) => {
+                                        const required = Math.max(1, parseInt(record.quantity, 10) || 1);
+                                        const uploaded = detailImages.filter(img => img.taskItemId === record.id).length;
+                                        const percent = required > 0 ? Math.min(100, Math.round((uploaded / required) * 100)) : 0;
+                                        return (
+                                            <div>
+                                                <div style={{ fontSize: 12, marginBottom: 4 }}>{uploaded}/{required}</div>
+                                                <Progress percent={percent} size="small" showInfo={false} />
+                                            </div>
+                                        );
+                                    }
+                                }
                             ]}
                         />
                     </div>
