@@ -4,7 +4,7 @@ import React from 'react';
 const CommonFooter = ({ style, color = '#8c8c8c' }) => {
     const currentYear = new Date().getFullYear();
     const companyName = "深圳市伽玛消防设施工程有限公司."; // 公司名
-    const icpNumber = "粤ICP备20046910号"; // 备案号
+    const icpNumber = "粤ICP备20046910号-2"; // 备案号
 
     return (
         <footer style={{
