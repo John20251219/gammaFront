@@ -11,7 +11,7 @@ import {
     SearchOutlined, ReloadOutlined, StopOutlined, EyeOutlined, TeamOutlined, PictureOutlined, UserOutlined, ClockCircleOutlined,
     DownloadOutlined, UploadOutlined
 } from '@ant-design/icons';
-import request, { API_BASE_URL } from '../utils/request';
+import request from '../utils/request';
 import { authService } from '../utils/auth';
 import dayjs from 'dayjs';
 
@@ -195,7 +195,12 @@ const TaskList = () => {
     const handleExportTaskTemplate = async () => {
         const token = localStorage.getItem('auth_token');
         const username = authService.getUsername();
-        const url = `${API_BASE_URL}/api/tasks/template/export?username=${encodeURIComponent(username)}`;
+        const base = String(request.defaults?.baseURL ?? '').replace(/\/$/, '');
+        if (!base) {
+            message.error('未配置后端地址');
+            return;
+        }
+        const url = `${base}/api/tasks/template/export?username=${encodeURIComponent(username)}`;
         try {
             const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
             if (res.status === 403 || res.status === 401) {

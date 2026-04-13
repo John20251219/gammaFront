@@ -2,10 +2,13 @@
 import axios from 'axios';
 import { message } from 'antd';
 
+// 与后端一致；任务模板导出等需拼接完整 URL 时使用
+export const API_BASE_URL = 'http://localhost:8080';
+
 // 创建 axios 实例
 const service = axios.create({
-    baseURL: '', //
-    timeout: 5000 // 请求超时时间
+    baseURL: API_BASE_URL,
+    timeout: 60000 // 模板导入可能略慢，适当放宽
 });
 
 // 1. 请求拦截器：每次请求都在 Header 里带上 Token
