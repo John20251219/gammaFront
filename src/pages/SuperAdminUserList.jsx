@@ -373,7 +373,7 @@ const SuperAdminUserList = () => {
     };
 
     const handleAddGroup = async (values) => {
-        const res = await request.post('/api/groups', { name: values.groupName, description: values.description });
+        const res = await request.post('/api/users/newGroups', { name: values.groupName, description: values.description });
         if (res.code === 200) {
             message.success('创建成功');
             setIsModalOpen(false);

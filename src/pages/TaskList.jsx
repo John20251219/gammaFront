@@ -3,14 +3,15 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
     Table, Card, Button, Modal, Form, Input,
     Select, Tag, Space, message, Divider, DatePicker, Popconfirm, Row, Col,
-    Checkbox, InputNumber, Image, Progress
+    Checkbox, InputNumber, Image, Progress, Upload
 } from 'antd';
 import {
     PlusOutlined, FileTextOutlined, EnvironmentOutlined,
     RocketOutlined, SaveOutlined, EditOutlined, DeleteOutlined,
-    SearchOutlined, ReloadOutlined, StopOutlined, EyeOutlined, TeamOutlined, PictureOutlined, UserOutlined, ClockCircleOutlined
+    SearchOutlined, ReloadOutlined, StopOutlined, EyeOutlined, TeamOutlined, PictureOutlined, UserOutlined, ClockCircleOutlined,
+    DownloadOutlined, UploadOutlined
 } from '@ant-design/icons';
-import request from '../utils/request';
+import request, { API_BASE_URL } from '../utils/request';
 import { authService } from '../utils/auth';
 import dayjs from 'dayjs';
 
@@ -191,6 +192,64 @@ const TaskList = () => {
     const handleSearch = () => { setPage(1); fetchTasks(); };
     const handleReset = () => { searchForm.resetFields(); setPage(1); fetchTasks(); };
 
+    const handleExportTaskTemplate = async () => {
+        const token = localStorage.getItem('auth_token');
+        const username = authService.getUsername();
+        const url = `${API_BASE_URL}/api/tasks/template/export?username=${encodeURIComponent(username)}`;
+        try {
+            const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+            if (res.status === 403 || res.status === 401) {
+                message.error(res.status === 401 ? '请先登录' : '仅超级管理员可导出任务模板');
+                return;
+            }
+            if (!res.ok) {
+                message.error('导出失败');
+                return;
+            }
+            const blob = await res.blob();
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = '巡检任务导入模板.xlsx';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+            message.success('模板已下载');
+        } catch (e) {
+            console.error(e);
+            message.error('导出失败');
+        }
+    };
+
+    const handleImportTaskTemplate = async (file) => {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('username', authService.getUsername());
+        try {
+            const res = await request.post('/api/tasks/template/import', fd);
+            if (res.code === 200 && res.data) {
+                const { successCount, failCount, errors } = res.data;
+                if (failCount > 0 && errors?.length) {
+                    Modal.warning({
+                        title: `导入完成：成功 ${successCount} 条，失败 ${failCount} 条`,
+                        width: 560,
+                        content: (
+                            <div style={{ maxHeight: 320, overflow: 'auto' }}>
+                                {errors.map((t, i) => <div key={i} style={{ marginBottom: 6 }}>{t}</div>)}
+                            </div>
+                        )
+                    });
+                } else {
+                    message.success(`导入成功，共创建 ${successCount} 条任务`);
+                }
+                fetchTasks();
+            }
+        } catch (e) {
+            console.error(e);
+        }
+        return false;
+    };
+
     // === 操作：打开新建弹窗 ===
     const handleOpenCreate = () => {
         setModalType('create');
@@ -363,7 +422,9 @@ const TaskList = () => {
                             )}
                         </>
                     )}
-                    <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewDetail(record)}>详情</Button>
+                    {(record.status !== '0' && record.status !== 0) && (
+                        <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewDetail(record)}>详情</Button>
+                    )}
                 </Space>
             )}
     ];
@@ -415,7 +476,15 @@ const TaskList = () => {
         <div>
             <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h2><FileTextOutlined /> 巡检任务管理</h2>
-                {isSuperAdmin && <Button type="primary" icon={<PlusOutlined />} onClick={handleOpenCreate}>新建任务</Button>}
+                {isSuperAdmin && (
+                    <Space>
+                        <Button icon={<DownloadOutlined />} onClick={handleExportTaskTemplate}>导出任务模板</Button>
+                        <Upload accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" showUploadList={false} beforeUpload={handleImportTaskTemplate}>
+                            <Button icon={<UploadOutlined />}>导入模板</Button>
+                        </Upload>
+                        <Button type="primary" icon={<PlusOutlined />} onClick={handleOpenCreate}>新建任务</Button>
+                    </Space>
+                )}
             </div>
 
             {/* 搜索栏 */}
