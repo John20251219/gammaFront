@@ -13,7 +13,7 @@ import {
 } from '@ant-design/icons';
 import request from '../utils/request';
 import { authService } from '../utils/auth';
-import { isSuperAdmin } from '../constants/roles';
+import { isSuperAdmin } from '../constants/roles.js';
 import dayjs from 'dayjs';
 
 const { Option } = Select;

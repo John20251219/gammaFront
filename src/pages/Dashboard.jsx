@@ -9,7 +9,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate, Outlet, useLocation } from 'react-router-dom';
 import { authService } from '../utils/auth';
-import { ROLE_IDS } from '../constants/roles';
+import { ROLE_IDS } from '../constants/roles.js';
 import CommonFooter from '../components/CommonFooter';
 
 const { Header, Content, Footer, Sider } = Layout;

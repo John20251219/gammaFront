@@ -18,7 +18,7 @@ import {
     CrownOutlined
 } from '@ant-design/icons';
 import request from '../utils/request';
-import { ROLE_IDS } from '../constants/roles';
+import { ROLE_IDS } from '../constants/roles.js';
 
 const { Option } = Select;
 

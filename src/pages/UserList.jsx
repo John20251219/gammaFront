@@ -10,7 +10,7 @@ import {
 } from '@ant-design/icons';
 import request from '../utils/request';
 import { authService } from '../utils/auth';
-import { ROLE_IDS, isSuperAdmin, isTeamLeader } from '../constants/roles';
+import { ROLE_IDS, isSuperAdmin, isTeamLeader } from '../constants/roles.js';
 
 const { Option } = Select;
 

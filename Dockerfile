@@ -1,5 +1,6 @@
 # === 第一阶段：Node 构建 ===
-FROM node:18-alpine AS builder
+# Vite 7 需要 Node 20.19+ / 22.12+；构建上下文请使用 adminFront 目录（该目录内需含 package.json 与 src/）
+FROM node:22-alpine AS builder
 WORKDIR /web
 COPY package*.json ./
 # 安装依赖
