@@ -2,8 +2,19 @@
 import axios from 'axios';
 import { message } from 'antd';
 
-// 与后端一致；任务模板导出等需拼接完整 URL 时使用
-export const API_BASE_URL = 'http://localhost:8080';
+/**
+ * 接口根地址（不含末尾 /）。
+ * - 开发：默认 http://localhost:8080，可在 .env.development 里设 VITE_API_BASE_URL 覆盖。
+ * - 生产：默认空字符串，请求走当前站点同源路径 /api，由 nginx 反代到后端（见 nginx.conf）。
+ * - 若前后端不同域：在 .env.production 中设置 VITE_API_BASE_URL=https://你的-api域名
+ */
+const fromEnv = import.meta.env.VITE_API_BASE_URL;
+export const API_BASE_URL =
+    fromEnv !== undefined && fromEnv !== null && String(fromEnv).trim() !== ''
+        ? String(fromEnv).trim().replace(/\/+$/, '')
+        : import.meta.env.DEV
+            ? 'http://localhost:8080'
+            : '';
 
 // 创建 axios 实例
 const service = axios.create({
