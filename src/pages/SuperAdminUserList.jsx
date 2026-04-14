@@ -18,8 +18,15 @@ import {
     CrownOutlined
 } from '@ant-design/icons';
 import request from '../utils/request';
+import { ROLE_IDS } from '../constants/roles';
 
 const { Option } = Select;
+
+const roleTagColor = (roleId) => {
+    const n = Number(roleId);
+    if (n === ROLE_IDS.SUPER_ADMIN || n === ROLE_IDS.TEAM_LEADER) return 'gold';
+    return 'cyan';
+};
 
 const SuperAdminUserList = () => {
     // === 基础数据 ===
@@ -53,6 +60,7 @@ const SuperAdminUserList = () => {
     const [unassignedUsers, setUnassignedUsers] = useState([]); // 待选用户列表
     const [selectedUserIds, setSelectedUserIds] = useState([]); // 已选中的用户ID
     const [addMemberLoading, setAddMemberLoading] = useState(false);
+    const [eligibleRoles, setEligibleRoles] = useState([]);
 
     // 初始化加载小组 (下拉框数据源)
     useEffect(() => {
@@ -81,7 +89,11 @@ const SuperAdminUserList = () => {
     // 初始化加载
     useEffect(() => {
         fetchGroups();
-        fetchOccupiedGroups(); // 加载被占领信息
+        fetchOccupiedGroups();
+        (async () => {
+            const res = await request.get('/api/users/roles/eligible');
+            if (res.code === 200) setEligibleRoles(res.data || []);
+        })();
     }, []);
 
     // 新增：获取被管理员占领的小组
@@ -134,9 +146,9 @@ const SuperAdminUserList = () => {
     };
 
     // === 2. 组内操作：设为管理员 / 设为普通用户 ===
-    const handleChangeGroupRole = async (user, targetRole) => {
+    const handleChangeGroupRole = async (user, targetRoleId) => {
         const res = await request.put(`/api/users/${user.id}/change-role`, null, {
-            params: { targetRole, groupId: selectedGroupId }
+            params: { targetRoleId, groupId: selectedGroupId }
         });
         if (res.code === 200) {
             message.success('角色变更成功');
@@ -159,8 +171,8 @@ const SuperAdminUserList = () => {
     const groupColumns = [
         { title: '用户名', dataIndex: 'username', key: 'username', render: t => <Space><UserOutlined />{t}</Space> },
         { title: '昵称', dataIndex: 'nickname', key: 'nickname' },
-        { title: '角色', dataIndex: 'role', key: 'role',
-            render: r => <Tag color={r === 'ADMIN' ? 'gold' : 'cyan'}>{r === 'ADMIN' ? '小组长' : '成员'}</Tag>
+        { title: '角色', dataIndex: 'roleNameCn', key: 'roleCn',
+            render: (t, record) => <Tag color={roleTagColor(record.role)}>{t || '—'}</Tag>
         },
         { title: '状态', dataIndex: 'status', key: 'status',
             render: s => <Tag color={s === 1 ? 'success' : 'error'}>{s === 1 ? '正常' : '禁用'}</Tag>
@@ -176,15 +188,14 @@ const SuperAdminUserList = () => {
                 return (
                     <Space size="small">
                         {/* 逻辑：如果是正常用户 && 角色是USER && 本组目前没有管理员 -> 显示“设为组长” */}
-                        {isNormal && record.role === 'USER' && !hasAdmin && (
-                            <Popconfirm title="设为组长?" onConfirm={() => handleChangeGroupRole(record, 'ADMIN')}>
+                        {isNormal && (Number(record.role) === ROLE_IDS.TEAM_MEMBER || Number(record.role) === ROLE_IDS.UNGROUPED_USER) && !hasAdmin && (
+                            <Popconfirm title="设为组长?" onConfirm={() => handleChangeGroupRole(record, ROLE_IDS.TEAM_LEADER)}>
                                 <Button type="link" size="small" icon={<CrownOutlined />}>设为组长</Button>
                             </Popconfirm>
                         )}
 
-                        {/* 逻辑：如果是正常用户 && 角色是ADMIN -> 显示“设为成员” */}
-                        {isNormal && record.role === 'ADMIN' && (
-                            <Popconfirm title="降为普通成员?" onConfirm={() => handleChangeGroupRole(record, 'USER')}>
+                        {isNormal && Number(record.role) === ROLE_IDS.TEAM_LEADER && (
+                            <Popconfirm title="降为普通成员?" onConfirm={() => handleChangeGroupRole(record, ROLE_IDS.TEAM_MEMBER)}>
                                 <Button type="link" size="small">设为组员</Button>
                             </Popconfirm>
                         )}
@@ -270,7 +281,7 @@ const SuperAdminUserList = () => {
                 return g ? <Tag color="blue">{g.name}</Tag> : <Tag>未分配</Tag>;
             }
         },
-        { title: '角色', dataIndex: 'role', key: 'role', render: r => <Tag color={r === 'ADMIN' || r === 'SUPER_ADMIN' ? 'gold' : 'cyan'}>{r}</Tag> },
+        { title: '角色', dataIndex: 'roleNameCn', key: 'roleCn', render: (t, record) => <Tag color={roleTagColor(record.role)}>{t || '—'}</Tag> },
         // === 新增列：状态 ===
         { title: '状态', dataIndex: 'status', key: 'status',
             render: (status) => (
@@ -328,11 +339,11 @@ const SuperAdminUserList = () => {
                 params: {
                     pageNum: page,
                     pageSize: size,
-                    excludeRole: 'SUPER_ADMIN',
+                    excludeRoleId: ROLE_IDS.SUPER_ADMIN,
                     username: values.username,
                     nickname: values.nickname,
                     groupId: values.groupId,
-                    role: values.role // <--- 传给后端
+                    roleId: values.role
                 }
             });
             if (res.code === 200) {
@@ -399,9 +410,7 @@ const SuperAdminUserList = () => {
                     {/* === 核心修改 2: 新增角色下拉框 === */}
                     <Form.Item name="role" label="角色" style={{ minWidth: 150 }}>
                         <Select placeholder="选择角色" allowClear>
-                            {/* 这里根据你系统的实际角色定义 */}
-                            <Option value="USER">普通用户</Option>
-                            <Option value="ADMIN">管理员</Option>
+                            {eligibleRoles.map(r => <Option key={r.id} value={r.id}>{r.roleNameCn}</Option>)}
                         </Select>
                     </Form.Item>
 
@@ -595,8 +604,7 @@ const SuperAdminUserList = () => {
             >
                 <Form form={editForm} layout="vertical">
                     <Form.Item name="username" label="用户名" rules={[{ required: true }]}>
-                        {/* 允许修改用户名 */}
-                        <Input />
+                        <Input disabled placeholder="用户名不可修改" />
                     </Form.Item>
 
                     <Form.Item name="nickname" label="昵称">
@@ -604,9 +612,8 @@ const SuperAdminUserList = () => {
                     </Form.Item>
 
                     <Form.Item name="role" label="角色" rules={[{ required: true }]}>
-                        <Select>
-                            <Option value="USER">普通用户</Option>
-                            <Option value="ADMIN">管理员 (小组长)</Option>
+                        <Select placeholder="选择角色">
+                            {eligibleRoles.map(r => <Option key={r.id} value={r.id}>{r.roleNameCn}</Option>)}
                         </Select>
                     </Form.Item>
 
@@ -614,20 +621,14 @@ const SuperAdminUserList = () => {
                         name="groupId"
                         label="所属小组"
                         help={
-                            (currentEditRole === 'ADMIN' || currentEditRole === 'SUPER_ADMIN')
-                                ? "注：管理员只能分配到目前没有组长的小组"
+                            (Number(currentEditRole) === ROLE_IDS.TEAM_LEADER || Number(currentEditRole) === ROLE_IDS.SUPER_ADMIN)
+                                ? "注：组长/超管只能分配到目前没有组长的小组"
                                 : ""
                         }
                     >
                         <Select placeholder="请选择小组" allowClear>
                             {groups.map(g => {
-                                // === 核心逻辑：判断是否禁用 ===
-                                // 1. 如果当前选的角色是普通用户 (USER)，不禁用，可选任意组
-                                // 2. 如果当前选的角色是管理员 (ADMIN)，需要判断：
-                                //    该组是否已被占领 (occupiedGroupIds.includes(g.id))
-                                //    且 这个组不是正是该用户自己占领的 (g.id !== editingUser?.groupId)
-
-                                const isRoleAdmin = currentEditRole === 'ADMIN' || currentEditRole === 'SUPER_ADMIN';
+                                const isRoleAdmin = Number(currentEditRole) === ROLE_IDS.TEAM_LEADER || Number(currentEditRole) === ROLE_IDS.SUPER_ADMIN;
                                 const isOccupied = occupiedGroupIds.includes(g.id);
                                 const isSelfGroup = g.id === editingUser?.groupId; // 用户原本就在这个组
 

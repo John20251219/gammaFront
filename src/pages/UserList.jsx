@@ -10,8 +10,15 @@ import {
 } from '@ant-design/icons';
 import request from '../utils/request';
 import { authService } from '../utils/auth';
+import { ROLE_IDS, isSuperAdmin, isTeamLeader } from '../constants/roles';
 
 const { Option } = Select;
+
+const roleTagColor = (roleId) => {
+    const n = Number(roleId);
+    if (n === ROLE_IDS.SUPER_ADMIN || n === ROLE_IDS.TEAM_LEADER) return 'gold';
+    return 'cyan';
+};
 
 // ===========================================================================
 // 组件 A: 上帝视角 (SuperAdminView)
@@ -94,11 +101,16 @@ const SuperAdminView = () => {
     const [unassignedUsers, setUnassignedUsers] = useState([]);
     const [selectedUserIds, setSelectedUserIds] = useState([]);
     const [addMemberLoading, setAddMemberLoading] = useState(false);
+    const [eligibleRoles, setEligibleRoles] = useState([]);
 
     // 初始化
     useEffect(() => {
         fetchGroups();
         fetchOccupiedGroups();
+        (async () => {
+            const res = await request.get('/api/users/roles/eligible');
+            if (res.code === 200) setEligibleRoles(res.data || []);
+        })();
     }, []);
 
     useEffect(() => {
@@ -131,9 +143,9 @@ const SuperAdminView = () => {
             const values = searchForm.getFieldsValue();
             const res = await request.get('/api/users/list', {
                 params: {
-                    pageNum: page, pageSize: size, excludeRole: 'SUPER_ADMIN',
+                    pageNum: page, pageSize: size, excludeRoleId: ROLE_IDS.SUPER_ADMIN,
                     username: values.username, nickname: values.nickname,
-                    groupId: values.groupId, role: values.role
+                    groupId: values.groupId, roleId: values.role
                 }
             });
             if (res.code === 200) {
@@ -228,8 +240,8 @@ const SuperAdminView = () => {
         } finally { setAddMemberLoading(false); }
     };
 
-    const handleChangeGroupRole = async (user, targetRole) => {
-        const res = await request.put(`/api/users/${user.id}/change-role`, null, { params: { targetRole, groupId: selectedGroupId } });
+    const handleChangeGroupRole = async (user, targetRoleId) => {
+        const res = await request.put(`/api/users/${user.id}/change-role`, null, { params: { targetRoleId, groupId: selectedGroupId } });
         if (res.code === 200) {
             message.success('角色变更成功');
             fetchGroupUsers(selectedGroupId, groupPage, groupPageSize);
@@ -251,7 +263,7 @@ const SuperAdminView = () => {
         { title: '用户名', dataIndex: 'username', render: t => <Space><UserOutlined />{t}</Space> },
         { title: '昵称', dataIndex: 'nickname' },
         { title: '所属小组', dataIndex: 'groupId', render: gid => { const g = groups.find(i => i.id === gid); return g ? <Tag color="blue">{g.name}</Tag> : <Tag>未分配</Tag>; } },
-        { title: '角色', dataIndex: 'role', render: r => <Tag color={r === 'ADMIN' ? 'gold' : 'cyan'}>{r}</Tag> },
+        { title: '角色', dataIndex: 'roleNameCn', key: 'roleCn', render: (t, record) => <Tag color={roleTagColor(record.role)}>{t || '—'}</Tag> },
         { title: '状态', dataIndex: 'status', render: s => <Tag color={s === 1 ? 'success' : 'error'}>{s === 1 ? '正常' : '禁用'}</Tag> },
         { title: '操作', key: 'action', render: (_, r) => (
                 <Space>
@@ -266,18 +278,18 @@ const SuperAdminView = () => {
     const groupColumns = [
         { title: '用户名', dataIndex: 'username', render: t => <Space><UserOutlined />{t}</Space> },
         { title: '昵称', dataIndex: 'nickname' },
-        { title: '角色', dataIndex: 'role', render: r => <Tag color={r === 'ADMIN' ? 'gold' : 'cyan'}>{r === 'ADMIN' ? '小组长' : '成员'}</Tag> },
+        { title: '角色', dataIndex: 'roleNameCn', key: 'roleCn', render: (t, record) => <Tag color={roleTagColor(record.role)}>{t || '—'}</Tag> },
         { title: '状态', dataIndex: 'status', render: s => <Tag color={s === 1 ? 'success' : 'error'}>{s === 1 ? '正常' : '禁用'}</Tag> },
         { title: '操作', key: 'action', render: (_, record) => {
                 const hasAdmin = occupiedGroupIds.includes(selectedGroupId);
                 const isNormal = record.status === 1;
                 return (
                     <Space size="small">
-                        {isNormal && record.role === 'USER' && !hasAdmin && (
-                            <Popconfirm title="设为组长?" onConfirm={() => handleChangeGroupRole(record, 'ADMIN')}><Button type="link" size="small" icon={<CrownOutlined />}>设为组长</Button></Popconfirm>
+                        {isNormal && (Number(record.role) === ROLE_IDS.TEAM_MEMBER || Number(record.role) === ROLE_IDS.UNGROUPED_USER) && !hasAdmin && (
+                            <Popconfirm title="设为组长?" onConfirm={() => handleChangeGroupRole(record, ROLE_IDS.TEAM_LEADER)}><Button type="link" size="small" icon={<CrownOutlined />}>设为组长</Button></Popconfirm>
                         )}
-                        {isNormal && record.role === 'ADMIN' && (
-                            <Popconfirm title="降为成员?" onConfirm={() => handleChangeGroupRole(record, 'USER')}><Button type="link" size="small">设为成员</Button></Popconfirm>
+                        {isNormal && Number(record.role) === ROLE_IDS.TEAM_LEADER && (
+                            <Popconfirm title="降为成员?" onConfirm={() => handleChangeGroupRole(record, ROLE_IDS.TEAM_MEMBER)}><Button type="link" size="small">设为成员</Button></Popconfirm>
                         )}
                         {/* 逻辑：所有用户都可以移出 */}
                         <Popconfirm title="确定移出该小组?" description="组长移出后角色将重置为普通用户" onConfirm={() => handleRemoveFromGroup(record)}>
@@ -295,7 +307,7 @@ const SuperAdminView = () => {
                 <Form form={searchForm} layout="inline" onFinish={handleSearch}>
                     <Form.Item name="username" label="用户名"><Input allowClear /></Form.Item>
                     <Form.Item name="nickname" label="昵称"><Input allowClear /></Form.Item>
-                    <Form.Item name="role" label="角色"><Select style={{ width: 120 }} allowClear><Option value="USER">普通用户</Option><Option value="ADMIN">管理员</Option></Select></Form.Item>
+                    <Form.Item name="role" label="角色"><Select style={{ width: 160 }} allowClear placeholder="全部">{eligibleRoles.map(r => <Option key={r.id} value={r.id}>{r.roleNameCn}</Option>)}</Select></Form.Item>
                     <Form.Item name="groupId" label="小组"><Select style={{ width: 150 }} allowClear>{groups.map(g => <Option key={g.id} value={g.id}>{g.name}</Option>)}</Select></Form.Item>
                     <Form.Item><Space><Button type="primary" htmlType="submit" icon={<SearchOutlined />}>查询</Button><Button icon={<ReloadOutlined />} onClick={handleReset}>重置</Button></Space></Form.Item>
                 </Form>
@@ -358,7 +370,7 @@ const SuperAdminView = () => {
                     </Form.Item>
                 </Form>
             </Modal>
-            <Modal title="编辑用户" open={isEditModalOpen} onOk={handleUpdateUser} onCancel={() => setIsEditModalOpen(false)}><Form form={editForm} layout="vertical"><Form.Item name="username" label="用户名"><Input /></Form.Item><Form.Item name="nickname" label="昵称"><Input disabled /></Form.Item><Form.Item name="role" label="角色"><Select><Option value="USER">普通用户</Option><Option value="ADMIN">管理员</Option></Select></Form.Item><Form.Item name="groupId" label="小组"><Select allowClear>{groups.map(g => { const disabled = (currentEditRole === 'ADMIN' || currentEditRole === 'SUPER_ADMIN') && occupiedGroupIds.includes(g.id) && g.id !== editingUser?.groupId; return <Option key={g.id} value={g.id} disabled={disabled}>{g.name}{disabled?'(已占)':''}</Option> })}</Select></Form.Item></Form></Modal>
+            <Modal title="编辑用户" open={isEditModalOpen} onOk={handleUpdateUser} onCancel={() => setIsEditModalOpen(false)}><Form form={editForm} layout="vertical"><Form.Item name="username" label="用户名"><Input disabled placeholder="用户名不可修改" /></Form.Item><Form.Item name="nickname" label="昵称"><Input disabled /></Form.Item><Form.Item name="role" label="角色" rules={[{ required: true }]}><Select placeholder="选择角色">{eligibleRoles.map(r => <Option key={r.id} value={r.id}>{r.roleNameCn}</Option>)}</Select></Form.Item><Form.Item name="groupId" label="小组"><Select allowClear>{groups.map(g => { const disabled = (Number(currentEditRole) === ROLE_IDS.TEAM_LEADER || Number(currentEditRole) === ROLE_IDS.SUPER_ADMIN) && occupiedGroupIds.includes(g.id) && g.id !== editingUser?.groupId; return <Option key={g.id} value={g.id} disabled={disabled}>{g.name}{disabled?'(已占)':''}</Option> })}</Select></Form.Item></Form></Modal>
             <Modal title="添加成员" open={isAddMemberOpen} onOk={handleAddMembers} confirmLoading={addMemberLoading} onCancel={() => setIsAddMemberOpen(false)} width={600}><Table rowKey="id" dataSource={unassignedUsers} columns={[{ title: '用户名', dataIndex: 'username' }, { title: '昵称', dataIndex: 'nickname' }]} pagination={{ pageSize: 5 }} rowSelection={{ type: 'checkbox', onChange: setSelectedUserIds, selectedRowKeys: selectedUserIds }} /></Modal>
         </div>
     );
@@ -370,7 +382,7 @@ const SuperAdminView = () => {
 const MyGroupView = () => {
     const userInfo = authService.getUserInfo();
     const myGroupId = userInfo.groupId;
-    const isGroupAdmin = userInfo.role === 'ADMIN';
+    const isGroupAdmin = isTeamLeader(userInfo);
 
     const [groupInfo, setGroupInfo] = useState(null);
     const [members, setMembers] = useState([]);
@@ -421,7 +433,7 @@ const MyGroupView = () => {
     const columns = [
         { title: '用户名', dataIndex: 'username', render: t => <Space><UserOutlined />{t}</Space> },
         { title: '昵称', dataIndex: 'nickname' },
-        { title: '角色', dataIndex: 'role', render: r => <Tag color={r==='ADMIN'?'gold':'cyan'}>{r==='ADMIN'?'组长':'成员'}</Tag> },
+        { title: '角色', dataIndex: 'roleNameCn', key: 'roleCn', render: (t, record) => <Tag color={roleTagColor(record.role)}>{t || '—'}</Tag> },
         { title: '状态', dataIndex: 'status', render: s => <Tag color={s===1?'success':'error'}>{s===1?'正常':'禁用'}</Tag> },
         // 只有组长才显示操作列
         ...(isGroupAdmin ? [{
@@ -429,7 +441,7 @@ const MyGroupView = () => {
             key: 'action',
             render: (_, record) => {
                 // 不能移除自己，也不能移除其他 ADMIN
-                if (record.id === userInfo.id || record.role === 'ADMIN') return null;
+                if (record.id === userInfo.id || Number(record.role) === ROLE_IDS.TEAM_LEADER || Number(record.role) === ROLE_IDS.SUPER_ADMIN) return null;
                 return (
                     <Popconfirm title="移出小组?" onConfirm={() => handleRemove(record.id)}>
                         <Button type="link" danger size="small" icon={<LogoutOutlined />}>移出</Button>
@@ -462,7 +474,7 @@ const UserList = () => {
     console.log('当前登录用户:', userInfo); // 方便调试
 
     // 1. 如果是超级管理员 -> 显示全功能视图
-    if (userInfo.role === 'SUPER_ADMIN') {
+    if (isSuperAdmin(userInfo)) {
         return <SuperAdminView />;
     }
 

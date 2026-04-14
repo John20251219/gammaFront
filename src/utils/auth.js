@@ -59,7 +59,7 @@ export const authService = {
   // === 新增：获取用户角色 ===
   getUserRole: () => {
     const user = JSON.parse(localStorage.getItem(USER_INFO_KEY) || '{}');
-    return user.role; // 例如返回 'SUPER_ADMIN' 或 'USER'
+    return user.role; // role 表主键 id（数字）
   },
 
   changePassword: async (username, oldPassword, newPassword) => {

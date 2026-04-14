@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons';
 import request from '../utils/request';
 import { authService } from '../utils/auth';
+import { isSuperAdmin } from '../constants/roles';
 import dayjs from 'dayjs';
 
 const { Option } = Select;
@@ -29,7 +30,7 @@ const TaskList = () => {
     const navigate = useNavigate();
     // === 用户身份 ===
     const currentUser = authService.getUserInfo();
-    const isSuperAdmin = currentUser.role === 'SUPER_ADMIN';
+    const isSuperAdminUser = isSuperAdmin(currentUser);
 
     // === 列表状态 ===
     const [tasks, setTasks] = useState([]);
@@ -68,7 +69,7 @@ const TaskList = () => {
 
     useEffect(() => {
         fetchTasks();
-        if (isSuperAdmin) {
+        if (isSuperAdminUser) {
             fetchGroups();
             fetchStandards();
         }
@@ -409,7 +410,7 @@ const TaskList = () => {
         { title: '创建时间', dataIndex: 'createTime', width: 150, render: t => t ? dayjs(t).format('YYYY-MM-DD HH:mm') : '-' },
         { title: '操作', key: 'action', width: 220, render: (_, record) => (
                 <Space>
-                    {isSuperAdmin && (
+                    {isSuperAdminUser && (
                         <>
                             {record.status === '0' || record.status === 0 ? (
                                 <>
@@ -481,7 +482,7 @@ const TaskList = () => {
         <div>
             <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h2><FileTextOutlined /> 巡检任务管理</h2>
-                {isSuperAdmin && (
+                {isSuperAdminUser && (
                     <Space>
                         <Button icon={<DownloadOutlined />} onClick={handleExportTaskTemplate}>导出任务模板</Button>
                         <Upload accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" showUploadList={false} beforeUpload={handleImportTaskTemplate}>
@@ -501,15 +502,15 @@ const TaskList = () => {
                         <Col span={6}>
                             <Form.Item name="status" label="状态" style={{ width: '100%' }}>
                                 <Select placeholder="全部" allowClear>
-                                    {isSuperAdmin && <Option value="0">草稿</Option>}
+                                    {isSuperAdminUser && <Option value="0">草稿</Option>}
                                     <Option value="1">待执行</Option>
                                     <Option value="2">执行中</Option>
                                     <Option value="3">已完成</Option>
-                                    {isSuperAdmin && <Option value="4">已废弃</Option>}
+                                    {isSuperAdminUser && <Option value="4">已废弃</Option>}
                                 </Select>
                             </Form.Item>
                         </Col>
-                        {isSuperAdmin && (
+                        {isSuperAdminUser && (
                             <Col span={6}>
                                 <Form.Item name="queryGroupId" label="小组" style={{ width: '100%' }}>
                                     <Select placeholder="全部" allowClear>{groups.map(g => <Option key={g.id} value={g.id}>{g.name}</Option>)}</Select>

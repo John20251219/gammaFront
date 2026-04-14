@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate, Outlet, useLocation } from 'react-router-dom';
 import { authService } from '../utils/auth';
+import { ROLE_IDS } from '../constants/roles';
 import CommonFooter from '../components/CommonFooter';
 
 const { Header, Content, Footer, Sider } = Layout;
@@ -36,6 +37,7 @@ const Dashboard = () => {
     // 获取当前用户信息
     const user = authService.getUserInfo();
     const { role, groupId } = user;
+    const roleNum = Number(role);
 
     // 2. 定义完整的菜单结构
     const allMenuItems = [
@@ -60,9 +62,9 @@ const Dashboard = () => {
             // 2. 如果是管理员 (ADMIN) -> 显示 (因为管理员肯定有组，或者即便没组也能进去看看空状态)
             // 3. 如果是普通用户 (USER) -> 必须有 groupId 才显示
 
-            if (role === 'SUPER_ADMIN') return true;
-            if (role === 'ADMIN') return true;
-            if (role === 'USER' && groupId) return true;
+            if (roleNum === ROLE_IDS.SUPER_ADMIN) return true;
+            if (roleNum === ROLE_IDS.TEAM_LEADER) return true;
+            if (roleNum === ROLE_IDS.TEAM_MEMBER && groupId) return true;
             // 其他情况 (未分组的 USER) -> 隐藏
             return false;
         }
@@ -146,8 +148,8 @@ const Dashboard = () => {
                 {user.nickname || user.username}
               </span>
                             <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: '12px' }}>
-                {user.role === 'SUPER_ADMIN' ? '超级管理员' :
-                    user.role === 'ADMIN' ? '小组长' : '成员'}
+                {user.roleNameCn || (roleNum === ROLE_IDS.SUPER_ADMIN ? '超级管理员' :
+                    roleNum === ROLE_IDS.TEAM_LEADER ? '组长' : '组员')}
               </span>
                         </div>
                     </div>
